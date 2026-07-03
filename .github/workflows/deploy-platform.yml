@@ -35,7 +35,7 @@ jobs:
           TARGET_ENV: ${{ inputs.environment }}
         run: |
           case "${TARGET_ENV}" in
-            dev) default_ref="refs/heads/dev" ;;
+            dev) default_ref="refs/heads/develop" ;;
             prod) default_ref="refs/heads/main" ;;
             *)
               echo "Unsupported environment: ${TARGET_ENV}" >&2
