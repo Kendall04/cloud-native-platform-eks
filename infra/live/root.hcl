@@ -2,11 +2,14 @@ terraform_version_constraint  = ">= 1.6.0"
 terragrunt_version_constraint = ">= 0.55.0"
 
 locals {
-  env_config   = read_terragrunt_config(find_in_parent_folders("env.hcl"))
-  project_name = local.env_config.locals.project_name
-  environment  = local.env_config.locals.environment
-  region       = local.env_config.locals.region
-  tags         = try(local.env_config.locals.tags, {})
+  env_config       = read_terragrunt_config(find_in_parent_folders("env.hcl"))
+  project_name     = local.env_config.locals.project_name
+  environment      = local.env_config.locals.environment
+  region           = local.env_config.locals.region
+  aws_account_id   = get_aws_account_id()
+  state_bucket     = "${local.project_name}-${local.aws_account_id}-${local.environment}-${local.region}-tfstate"
+  state_lock_table = "${local.project_name}-${local.aws_account_id}-${local.environment}-terraform-locks"
+  tags             = try(local.env_config.locals.tags, {})
 }
 
 remote_state {
@@ -18,18 +21,18 @@ remote_state {
   }
 
   config = {
-    bucket         = "${local.project_name}-${local.environment}-${local.region}-terraform-state"
+    bucket         = local.state_bucket
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = local.region
     encrypt        = true
-    dynamodb_table = "${local.project_name}-${local.environment}-terraform-locks"
+    dynamodb_table = local.state_lock_table
 
     s3_bucket_tags = merge(local.tags, {
-      Name = "${local.project_name}-${local.environment}-${local.region}-terraform-state"
+      Name = local.state_bucket
     })
 
     dynamodb_table_tags = merge(local.tags, {
-      Name = "${local.project_name}-${local.environment}-terraform-locks"
+      Name = local.state_lock_table
     })
 
     skip_bucket_enforced_tls           = false
@@ -64,4 +67,3 @@ inputs = {
   region       = local.region
   tags         = local.tags
 }
-
