@@ -3,7 +3,7 @@ name: Build SHA Images
 on:
   push:
     branches:
-      - dev
+      - develop
       - main
 
 permissions:
