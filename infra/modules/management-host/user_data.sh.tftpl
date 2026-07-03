@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+
+if ! command -v aws >/dev/null 2>&1; then
+  dnf install -y awscli
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  dnf install -y curl-minimal
+fi
+
+curl -fsSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/${kubectl_version}/bin/linux/amd64/kubectl"
+chmod 0755 /usr/local/bin/kubectl
+
+systemctl enable --now amazon-ssm-agent
