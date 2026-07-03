@@ -1,11 +1,13 @@
 # RDS Apply Evidence
 
-Execution date: 2026-07-03T14:32:10Z
+Initial execution date: 2026-07-03T14:32:10Z
+Resume execution date: 2026-07-03T15:50:04Z
 
 ## Scope
 
-This phase attempted to apply only the `rds` Terragrunt stack for the AWS `dev`
-environment.
+This evidence covers the initial RDS apply attempt and the resumed RDS apply
+after correcting the PostgreSQL engine version. Both executions were scoped only
+to the `rds` Terragrunt stack for the AWS `dev` environment.
 
 No EKS, IAM, API Gateway, Lambda, Kubernetes, Helm release, destroy, Git push, or
 other stack apply was executed.
@@ -34,7 +36,7 @@ terraform fmt -check -recursive infra
 terragrunt hcl format --check infra/live
 ```
 
-## RDS Plan
+## Initial RDS Plan
 
 Commands:
 
@@ -74,7 +76,7 @@ Planned DB properties:
 - Deletion protection: enabled
 - Master password: RDS-managed, no static password in Terraform
 
-## Apply Result
+## Initial Apply Result
 
 Command:
 
@@ -97,7 +99,7 @@ Read-only engine version inspection in `us-east-1` showed available PostgreSQL
 15.13, 15.14, 15.15, 15.16, 15.17, 15.18
 ```
 
-## Partial State
+## Partial State After Initial Failure
 
 The apply created and recorded the non-DB prerequisites before failing:
 
@@ -110,7 +112,7 @@ aws_vpc_security_group_ingress_rule.cidr["10.0.0.0/16"]
 
 No manual Terraform state manipulation was performed.
 
-## RDS Validation
+## Initial RDS Validation
 
 DB instance:
 
@@ -139,6 +141,104 @@ Secrets Manager:
   was not created.
 - No secret value was retrieved.
 
+## Engine Version Fix
+
+The RDS apply was resumed after changing:
+
+```text
+engine_version = "15.7"
+```
+
+to:
+
+```text
+engine_version = "15.18"
+```
+
+Changed file:
+
+```text
+infra/live/dev/rds/terragrunt.hcl
+```
+
+No instance class, storage, subnet, security group, deletion protection, public
+access, Multi-AZ, or credential handling settings were changed.
+
+## Plan After Engine Fix
+
+Commands:
+
+```bash
+cd infra/live/dev/rds
+terragrunt init
+terragrunt plan -no-color
+```
+
+Result:
+
+- Init: OK
+- Plan: OK
+- Summary: `1 to add, 0 to change, 0 to destroy`
+- Destroy/replacement: none
+
+Terraform refreshed and reused the existing partial resources:
+
+- `aws_db_subnet_group.this`
+- `aws_security_group.this`
+- `aws_vpc_security_group_egress_rule.all`
+- `aws_vpc_security_group_ingress_rule.cidr["10.0.0.0/16"]`
+
+Only the missing DB instance was planned for creation.
+
+## Apply After Engine Fix
+
+Command:
+
+```bash
+terragrunt apply -auto-approve -no-color
+```
+
+Result:
+
+- Apply: OK
+- Summary: `1 added, 0 changed, 0 destroyed`
+- DB identifier: `cloud-native-platform-dev-postgres`
+
+## Final RDS Validation
+
+DB instance:
+
+- Identifier: `cloud-native-platform-dev-postgres`
+- Status: `available`
+- Engine: `postgres`
+- Engine version: `15.18`
+- Instance class: `db.t4g.micro`
+- Allocated storage: `20 GiB`
+- Max allocated storage: `100 GiB`
+- Storage type: `gp3`
+- Storage encrypted: `true`
+- Publicly accessible: `false`
+- Multi-AZ: `false`
+- Backup retention: `7` days
+- Deletion protection: `true`
+- Security group: `sg-004039e0daea1a704`
+
+Subnet group:
+
+- Name: `cloud-native-platform-dev-postgres-subnets`
+- Status: `Complete`
+- VPC: `vpc-0fe33938202034387`
+- Subnets:
+  - `subnet-0ecdf9e460a352dc6`
+  - `subnet-0d50cde4bff9b5154`
+  - `subnet-03aa254292f6017e8`
+
+Secrets Manager:
+
+- RDS-managed master user secret exists.
+- Secret metadata was listed.
+- Secret value was not retrieved.
+
 ## Excluded Stacks
 
 Confirmed not applied:
@@ -158,14 +258,13 @@ AWS read-only checks showed:
 
 ## Cost And Risk Notes
 
-New cost from this failed attempt should be limited to low-cost supporting
-resources:
+New active RDS cost drivers after the successful resumed apply:
 
-- RDS DB subnet group
-- RDS security group and security group rules
-
-The RDS database instance itself was not created, so there is no RDS compute or
-storage charge from the DB instance yet.
+- `db.t4g.micro` PostgreSQL instance
+- `20 GiB` gp3 storage, autoscaling up to `100 GiB`
+- Backup retention for `7` days
+- CloudWatch PostgreSQL and upgrade logs as generated
+- Possible T-class CPU credit charges under sustained burst load
 
 The existing active base infrastructure remains the main cost driver:
 
@@ -175,18 +274,16 @@ The existing active base infrastructure remains the main cost driver:
 
 ## Recommendation
 
-Do not proceed to EKS.
+RDS is now applied and validated.
 
 Recommended next phase:
 
-1. Fix the RDS engine version to a currently available PostgreSQL 15 version in
-   `us-east-1`, for example a current supported `15.x` value.
-2. Re-run `terragrunt plan` for `infra/live/dev/rds`.
-3. Confirm Terraform plans only the missing DB instance and does not replace or
-   destroy the subnet group/security group unexpectedly.
-4. Re-run `terragrunt apply` for `rds` only.
-5. Validate DB status, encryption, private access, deletion protection, and
-   RDS-managed secret.
+1. Pause for cost confirmation before EKS.
+2. Re-plan EKS immediately before apply.
+3. Apply EKS only if the plan still shows expected cluster, node group, addon,
+   OIDC, and IRSA prerequisite resources.
+4. Stop if the cluster or node groups do not become healthy.
+5. Do not continue to Kubernetes or Helm until EKS is healthy.
 
 ## Explicitly Not Executed
 

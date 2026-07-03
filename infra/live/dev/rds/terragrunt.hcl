@@ -28,7 +28,7 @@ dependency "vpc" {
 inputs = {
   name                            = "${local.project_name}-${local.environment}-postgres"
   engine                          = "postgres"
-  engine_version                  = "15.7"
+  engine_version                  = "15.18"
   instance_class                  = "db.t4g.micro"
   allocated_storage               = 20
   max_allocated_storage           = 100
