@@ -1,10 +1,16 @@
 name: Build SHA Images
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - develop
       - main
+    paths:
+      - "microservices/**"
+      - "release/services.json"
+      - ".github/workflows/build-sha-images.yml"
+      - "scripts/**"
 
 permissions:
   contents: read
@@ -23,6 +29,7 @@ jobs:
 
   build:
     needs: prepare
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.ENABLE_IMAGE_BUILDS == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -30,6 +37,27 @@ jobs:
         service: ${{ fromJson(needs.prepare.outputs.services) }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate AWS image build inputs
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_GITHUB_ACTIONS_ROLE_ARN: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+        run: |
+          missing=0
+
+          if [[ -z "${AWS_REGION}" ]]; then
+            echo "Repository variable AWS_REGION is required to build and push images." >&2
+            missing=1
+          fi
+
+          if [[ -z "${AWS_GITHUB_ACTIONS_ROLE_ARN}" ]]; then
+            echo "Repository secret AWS_GITHUB_ACTIONS_ROLE_ARN is required to build and push images." >&2
+            missing=1
+          fi
+
+          if [[ "${missing}" -ne 0 ]]; then
+            exit 1
+          fi
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
