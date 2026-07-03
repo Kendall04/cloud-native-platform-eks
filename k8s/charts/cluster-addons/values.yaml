@@ -1,0 +1,37 @@
+aws-load-balancer-controller:
+  enabled: true
+  fullnameOverride: aws-load-balancer-controller
+  # Static preflight placeholders. scripts/deploy-cluster-addons.sh overrides
+  # these values from Terragrunt outputs before any real cluster deployment.
+  clusterName: static-preflight-cluster
+  region: us-east-1
+  vpcId: vpc-00000000000000000
+  replicaCount: 2
+  serviceAccount:
+    create: true
+    name: aws-load-balancer-controller
+    annotations: {}
+
+cluster-autoscaler:
+  enabled: true
+  fullnameOverride: cluster-autoscaler
+  cloudProvider: aws
+  # Static preflight placeholder. scripts/deploy-cluster-addons.sh overrides
+  # this value from Terragrunt outputs before any real cluster deployment.
+  awsRegion: us-east-1
+  replicaCount: 2
+  autoDiscovery:
+    clusterName: static-preflight-cluster
+  image:
+    tag: v1.35.0
+  rbac:
+    create: true
+    clusterScoped: true
+    serviceAccount:
+      create: true
+      name: cluster-autoscaler
+      annotations: {}
+  extraArgs:
+    balance-similar-node-groups: "true"
+    expander: least-waste
+    skip-nodes-with-system-pods: "false"

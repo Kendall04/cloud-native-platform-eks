@@ -1,0 +1,33 @@
+{{- if .Values.global.ingress.enabled }}
+{{- $root := . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: platform-services
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: logistics-platform
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    helm.sh/chart: {{ include "platform-services.chart" . }}
+  annotations:
+{{ toYaml .Values.global.ingress.annotations | indent 4 }}
+spec:
+  ingressClassName: {{ .Values.global.ingress.className }}
+  rules:
+    - {{- if .Values.global.ingress.host }}host: {{ .Values.global.ingress.host | quote }}{{- end }}
+      http:
+        paths:
+{{- range $serviceKey, $service := .Values.services }}
+{{- if $service.enabled }}
+{{- range $path := $service.ingressPaths }}
+          - path: {{ $path }}
+            pathType: {{ $root.Values.global.ingress.pathType }}
+            backend:
+              service:
+                name: {{ $service.name }}
+                port:
+                  number: {{ $service.port | default $root.Values.global.service.port }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

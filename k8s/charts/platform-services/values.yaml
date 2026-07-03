@@ -1,0 +1,235 @@
+namespace:
+  create: true
+  name: apps
+
+release:
+  version: ""
+  gitTag: ""
+  commitSha: ""
+
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  service:
+    type: ClusterIP
+    port: 8080
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+  ingress:
+    enabled: true
+    className: alb
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internal
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/backend-protocol: HTTP
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+      alb.ingress.kubernetes.io/healthcheck-path: /health
+      alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+      alb.ingress.kubernetes.io/success-codes: "200-399"
+    host: ""
+    pathType: Prefix
+
+services:
+  auth:
+    enabled: true
+    name: auth-service
+    component: api
+    replicaCount: 2
+    image:
+      repository: ""
+      tag: ""
+      digest: ""
+      pullPolicy: ""
+    serviceAccount:
+      create: true
+      name: auth-service
+      automountServiceAccountToken: false
+      annotations: {}
+    migrationJob:
+      enabled: true
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 300
+      serviceAccountName: ""
+      automountServiceAccountToken: false
+    env: {}
+    secretEnv: []
+    ingressPaths:
+      - /auth
+      - /admin/users
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    readinessProbe:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    livenessProbe:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    startupProbe:
+      enabled: true
+      path: /health
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 18
+    podDisruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    terminationGracePeriodSeconds: 30
+
+  shipment:
+    enabled: true
+    name: shipment-service
+    component: api
+    replicaCount: 2
+    image:
+      repository: ""
+      tag: ""
+      digest: ""
+      pullPolicy: ""
+    serviceAccount:
+      create: true
+      name: shipment-service
+      automountServiceAccountToken: true
+      annotations: {}
+    migrationJob:
+      enabled: true
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 300
+      serviceAccountName: ""
+      automountServiceAccountToken: false
+    env: {}
+    secretEnv: []
+    ingressPaths:
+      - /shipments
+      - /admin/shipments
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    readinessProbe:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    livenessProbe:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    startupProbe:
+      enabled: true
+      path: /health
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 24
+    podDisruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    terminationGracePeriodSeconds: 90
+    keda:
+      enabled: false
+      minReplicaCount: 1
+      maxReplicaCount: 10
+      pollingInterval: 30
+      cooldownPeriod: 300
+      queueURL: ""
+      awsRegion: us-east-1
+      queueLength: "5"
+      triggerAuthentication:
+        enabled: true
+        name: shipment-service-aws-identity
+        podIdentityProvider: aws-eks
+
+  tracking:
+    enabled: true
+    name: tracking-service
+    component: api
+    replicaCount: 2
+    image:
+      repository: ""
+      tag: ""
+      digest: ""
+      pullPolicy: ""
+    serviceAccount:
+      create: true
+      name: tracking-service
+      automountServiceAccountToken: true
+      annotations: {}
+    migrationJob:
+      enabled: true
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 300
+      serviceAccountName: ""
+      automountServiceAccountToken: false
+    env: {}
+    secretEnv: []
+    ingressPaths:
+      - /tracking
+      - /admin/tracking-events
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    readinessProbe:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    livenessProbe:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    startupProbe:
+      enabled: true
+      path: /health
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 18
+    podDisruptionBudget:
+      enabled: true
+      maxUnavailable: 1
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    terminationGracePeriodSeconds: 30

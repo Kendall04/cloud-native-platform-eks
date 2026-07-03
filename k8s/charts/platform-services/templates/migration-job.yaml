@@ -1,0 +1,54 @@
+{{- $root := . -}}
+{{- range $serviceKey, $service := .Values.services }}
+{{- if and $service.enabled $service.migrationJob.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $service.name }}-migrate
+  namespace: {{ $root.Values.namespace.name }}
+  labels:
+{{ include "platform-services.labels" (dict "root" $root "service" $service) | indent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+{{ include "platform-services.releaseAnnotations" (dict "root" $root "service" $service) | indent 4 }}
+spec:
+  backoffLimit: {{ $service.migrationJob.backoffLimit | default 1 }}
+  ttlSecondsAfterFinished: {{ $service.migrationJob.ttlSecondsAfterFinished | default 300 }}
+  template:
+    metadata:
+      labels:
+{{ include "platform-services.labels" (dict "root" $root "service" $service) | indent 8 }}
+      annotations:
+{{ include "platform-services.releaseAnnotations" (dict "root" $root "service" $service) | indent 8 }}
+    spec:
+      restartPolicy: OnFailure
+{{- if $service.migrationJob.serviceAccountName }}
+      serviceAccountName: {{ $service.migrationJob.serviceAccountName }}
+{{- end }}
+      automountServiceAccountToken: {{ $service.migrationJob.automountServiceAccountToken | default false }}
+{{- if gt (len $root.Values.global.imagePullSecrets) 0 }}
+      imagePullSecrets:
+{{ toYaml $root.Values.global.imagePullSecrets | indent 8 }}
+{{- end }}
+{{- with $root.Values.global.podSecurityContext }}
+      securityContext:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      containers:
+        - name: {{ $service.name }}-migrate
+          image: "{{ include "platform-services.imageRef" $service.image }}"
+          imagePullPolicy: {{ $service.image.pullPolicy | default $root.Values.global.imagePullPolicy }}
+          args:
+            - --migrate
+{{- if or (gt (len $service.env) 0) (gt (len $service.secretEnv) 0) }}
+          env:
+{{ include "platform-services.envList" (dict "root" $root "service" $service) | indent 12 }}
+{{- end }}
+          resources:
+{{ toYaml $service.resources | indent 12 }}
+          securityContext:
+{{ toYaml $root.Values.global.containerSecurityContext | indent 12 }}
+{{- end }}
+{{- end }}

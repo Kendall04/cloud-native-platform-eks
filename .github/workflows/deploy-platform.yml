@@ -1,0 +1,192 @@
+name: Deploy Platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment target
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      git_ref:
+        description: Git ref containing the desired values file. Leave blank to use the default branch for the environment.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: platform-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Resolve deployment ref
+        id: resolve
+        env:
+          INPUT_REF: ${{ inputs.git_ref }}
+          TARGET_ENV: ${{ inputs.environment }}
+        run: |
+          case "${TARGET_ENV}" in
+            dev) default_ref="refs/heads/dev" ;;
+            prod) default_ref="refs/heads/main" ;;
+            *)
+              echo "Unsupported environment: ${TARGET_ENV}" >&2
+              exit 1
+              ;;
+          esac
+
+          ref="${INPUT_REF}"
+          if [[ -z "${ref}" ]]; then
+            ref="${default_ref}"
+          fi
+
+          echo "ref=${ref}" >> "${GITHUB_OUTPUT}"
+          echo "values_file=k8s/environments/${TARGET_ENV}/platform-services.values.yaml" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.ref }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+
+      - uses: azure/setup-helm@v4
+
+      - name: Install yq
+        run: |
+          YQ_VERSION=v4.44.2
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --region "${{ vars.AWS_REGION }}" --name "${{ vars.EKS_CLUSTER_NAME }}"
+
+      - name: Validate values and build deployment record
+        env:
+          GIT_REF: ${{ steps.resolve.outputs.ref }}
+          TARGET_ENV: ${{ inputs.environment }}
+          VALUES_FILE: ${{ steps.resolve.outputs.values_file }}
+        run: |
+          if [[ ! -f "${VALUES_FILE}" ]]; then
+            echo "Values file not found: ${VALUES_FILE}" >&2
+            exit 1
+          fi
+
+          timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          version="$(yq -r '.release.version // ""' "${VALUES_FILE}")"
+          git_tag="$(yq -r '.release.gitTag // ""' "${VALUES_FILE}")"
+          commit_sha="$(yq -r '.release.commitSha // ""' "${VALUES_FILE}")"
+
+          if [[ -z "${version}" ]]; then
+            version="unversioned"
+          fi
+
+          if [[ -z "${git_tag}" ]]; then
+            git_tag="unreleased"
+          fi
+
+          if [[ -z "${commit_sha}" ]]; then
+            commit_sha="unknown"
+          fi
+
+          service_entries_file="$(mktemp)"
+
+          while IFS= read -r service; do
+            id="$(jq -r '.id' <<<"${service}")"
+            name="$(jq -r '.name' <<<"${service}")"
+            key="$(jq -r '.helmServiceKey' <<<"${service}")"
+            repository="$(yq -r ".services.${key}.image.repository // \"\"" "${VALUES_FILE}")"
+            tag="$(yq -r ".services.${key}.image.tag // \"\"" "${VALUES_FILE}")"
+            digest="$(yq -r ".services.${key}.image.digest // \"\"" "${VALUES_FILE}")"
+
+            if [[ -z "${repository}" ]]; then
+              echo "Missing image repository for service ${key}." >&2
+              exit 1
+            fi
+
+            if [[ -z "${digest}" ]]; then
+              echo "Missing image digest for service ${key}. Manual deployments must use exact digests." >&2
+              exit 1
+            fi
+
+            jq -n \
+              --arg service "${id}" \
+              --arg name "${name}" \
+              --arg repository "${repository}" \
+              --arg tag "${tag}" \
+              --arg digest "${digest}" \
+              '{
+                service: $service,
+                name: $name,
+                repository: $repository,
+                tag: $tag,
+                digest: $digest,
+                image: ($repository + "@" + $digest)
+              }' >> "${service_entries_file}"
+          done < <(jq -c '.services[]' release/services.json)
+
+          jq -s \
+            --arg environment "${TARGET_ENV}" \
+            --arg gitRef "${GIT_REF}" \
+            --arg version "${version}" \
+            --arg gitTag "${git_tag}" \
+            --arg commitSha "${commit_sha}" \
+            --arg actor "${GITHUB_ACTOR}" \
+            --arg timestamp "${timestamp}" \
+            '{
+              environment: $environment,
+              gitRef: $gitRef,
+              version: $version,
+              gitTag: $gitTag,
+              commitSha: $commitSha,
+              actor: $actor,
+              timestamp: $timestamp,
+              images: .
+            }' "${service_entries_file}" > deployment-record.json
+
+          {
+            echo "## Deployment Plan"
+            echo ""
+            echo "- Environment: \`${TARGET_ENV}\`"
+            echo "- Git ref: \`${GIT_REF}\`"
+            echo "- Version: \`${version}\`"
+            echo "- Git tag: \`${git_tag}\`"
+            echo "- Commit SHA: \`${commit_sha}\`"
+            echo "- Actor: \`${GITHUB_ACTOR}\`"
+            echo "- Timestamp: \`${timestamp}\`"
+            echo ""
+            echo "### Images"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          jq -r '.images[] | "- \(.name): `\(.image)`"' deployment-record.json >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Deploy platform services
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          VALUES_FILE: ${{ steps.resolve.outputs.values_file }}
+        run: ./scripts/deploy-platform-services.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deployment-record-${{ inputs.environment }}-${{ github.run_id }}
+          path: deployment-record.json
+
+      - name: Add completion summary
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+        run: |
+          {
+            echo ""
+            echo "Deployment completed for \`${TARGET_ENV}\`."
+          } >> "${GITHUB_STEP_SUMMARY}"
