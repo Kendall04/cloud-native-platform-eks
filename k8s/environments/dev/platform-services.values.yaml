@@ -1,0 +1,117 @@
+namespace:
+  create: false
+  name: apps
+
+# Populate release metadata and image digests before using the manual deploy workflow.
+release:
+  version: ""
+  gitTag: ""
+  commitSha: ""
+
+global:
+  ingress:
+    enabled: true
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internal
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/backend-protocol: HTTP
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+      alb.ingress.kubernetes.io/healthcheck-path: /health
+      alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+      alb.ingress.kubernetes.io/success-codes: "200-399"
+      alb.ingress.kubernetes.io/group.name: cloud-native-platform
+      alb.ingress.kubernetes.io/load-balancer-name: cloud-native-platform-dev
+
+services:
+  auth:
+    serviceAccount:
+      automountServiceAccountToken: false
+    image:
+      repository: "795708473882.dkr.ecr.us-east-1.amazonaws.com/auth-service"
+      tag: "bootstrap-20260328-011814"
+      digest: ""
+    env:
+      ASPNETCORE_ENVIRONMENT: Production
+      Swagger__Enabled: "true"
+      Database__Schema: auth
+      Jwt__Issuer: logistics-platform
+      Jwt__Audience: logistics-platform-clients
+      Jwt__ExpirationMinutes: "60"
+      Auth__RefreshTokenExpirationDays: "30"
+      BootstrapAdmin__FirstName: Platform
+      BootstrapAdmin__LastName: Admin
+    secretEnv:
+      - name: ConnectionStrings__Postgres
+        secretName: platform-runtime-secrets
+        secretKey: auth-connection-string
+      - name: Jwt__Secret
+        secretName: platform-runtime-secrets
+        secretKey: auth-jwt-secret
+      - name: BootstrapAdmin__Email
+        secretName: platform-runtime-secrets
+        secretKey: auth-bootstrap-admin-email
+      - name: BootstrapAdmin__Password
+        secretName: platform-runtime-secrets
+        secretKey: auth-bootstrap-admin-password
+
+  shipment:
+    image:
+      repository: "795708473882.dkr.ecr.us-east-1.amazonaws.com/shipment-service"
+      tag: "bootstrap-20260328-011814"
+      digest: ""
+    serviceAccount:
+      automountServiceAccountToken: true
+      annotations:
+        eks.amazonaws.com/role-arn: "arn:aws:iam::795708473882:role/cloud-native-platform-dev-shipment-service-irsa"
+    env:
+      ASPNETCORE_ENVIRONMENT: Production
+      Swagger__Enabled: "true"
+      Database__Schema: shipment
+      AWS__Region: us-east-1
+      AWS__EventBusName: cloud-native-platform-dev-bus
+      AWS__ShipmentEventsQueueUrl: "https://sqs.us-east-1.amazonaws.com/795708473882/cloud-native-platform-dev-shipment-events-queue"
+      ShipmentConsumer__MaxMessagesPerPoll: "5"
+      ShipmentConsumer__WaitTimeSeconds: "20"
+      ShipmentConsumer__FailureBackoffSeconds: "5"
+    secretEnv:
+      - name: ConnectionStrings__Postgres
+        secretName: platform-runtime-secrets
+        secretKey: shipment-connection-string
+      - name: PlatformAuth__TrustedProxySecret
+        secretName: platform-runtime-secrets
+        secretKey: platform-trusted-proxy-secret
+      - name: PlatformAuth__InternalServiceSecret
+        secretName: platform-runtime-secrets
+        secretKey: platform-internal-service-secret
+    keda:
+      enabled: false
+      queueURL: "https://sqs.us-east-1.amazonaws.com/795708473882/cloud-native-platform-dev-shipment-events-queue"
+      awsRegion: us-east-1
+      queueLength: "5"
+
+  tracking:
+    image:
+      repository: "795708473882.dkr.ecr.us-east-1.amazonaws.com/tracking-service"
+      tag: "bootstrap-20260328-011814"
+      digest: ""
+    serviceAccount:
+      automountServiceAccountToken: true
+      annotations:
+        eks.amazonaws.com/role-arn: "arn:aws:iam::795708473882:role/cloud-native-platform-dev-tracking-service-irsa"
+    env:
+      ASPNETCORE_ENVIRONMENT: Production
+      Swagger__Enabled: "true"
+      Database__Schema: tracking
+      AWS__Region: us-east-1
+      AWS__EventBusName: cloud-native-platform-dev-bus
+      ShipmentService__BaseUrl: "http://shipment-service.apps.svc.cluster.local:8080"
+    secretEnv:
+      - name: ConnectionStrings__Postgres
+        secretName: platform-runtime-secrets
+        secretKey: tracking-connection-string
+      - name: PlatformAuth__TrustedProxySecret
+        secretName: platform-runtime-secrets
+        secretKey: platform-trusted-proxy-secret
+      - name: PlatformAuth__InternalServiceSecret
+        secretName: platform-runtime-secrets
+        secretKey: platform-internal-service-secret

@@ -1,0 +1,57 @@
+#!/bin/bash
+set -euxo pipefail
+
+retry() {
+  local attempts=0
+
+  until "$@"; do
+    attempts=$((attempts + 1))
+    if [ "$attempts" -ge 30 ]; then
+      echo "Command failed after $attempts attempts: $*" >&2
+      return 1
+    fi
+    sleep 10
+  done
+}
+
+retry dnf install -y iptables-services
+systemctl disable --now firewalld 2>/dev/null || true
+
+cat >/etc/sysctl.d/99-nat.conf <<'EOF'
+net.ipv4.ip_forward=1
+net.ipv4.conf.all.rp_filter=2
+net.ipv4.conf.default.rp_filter=2
+EOF
+sysctl --system
+
+DEFAULT_IFACE="$(ip route show default | awk '/default/ { print $5; exit }')"
+if [ -z "$DEFAULT_IFACE" ]; then
+  echo "Unable to determine default network interface" >&2
+  exit 1
+fi
+
+cat >/etc/sysconfig/iptables <<EOF
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT ACCEPT [0:0]
+%{ for cidr in private_subnet_cidrs ~}
+-A FORWARD -s ${cidr} -o $DEFAULT_IFACE -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j ACCEPT
+-A FORWARD -d ${cidr} -i $DEFAULT_IFACE -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+%{ endfor ~}
+COMMIT
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+%{ for cidr in private_subnet_cidrs ~}
+-A POSTROUTING -s ${cidr} -o $DEFAULT_IFACE -j MASQUERADE
+%{ endfor ~}
+COMMIT
+EOF
+
+iptables-restore < /etc/sysconfig/iptables
+systemctl enable --now iptables
+
+echo "NAT instance configured." >/etc/motd

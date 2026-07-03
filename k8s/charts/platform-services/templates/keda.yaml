@@ -1,0 +1,43 @@
+{{- $root := . -}}
+{{- $shipment := index .Values.services "shipment" -}}
+{{- if and $shipment.enabled $shipment.keda.enabled }}
+{{- if $shipment.keda.triggerAuthentication.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ $shipment.keda.triggerAuthentication.name }}
+  namespace: {{ $root.Values.namespace.name }}
+  labels:
+{{ include "platform-services.labels" (dict "root" $root "service" $shipment) | indent 4 }}
+spec:
+  podIdentity:
+    provider: {{ $shipment.keda.triggerAuthentication.podIdentityProvider }}
+{{- end }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ printf "%s-sqs" $shipment.name }}
+  namespace: {{ $root.Values.namespace.name }}
+  labels:
+{{ include "platform-services.labels" (dict "root" $root "service" $shipment) | indent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ $shipment.name }}
+  pollingInterval: {{ $shipment.keda.pollingInterval }}
+  cooldownPeriod: {{ $shipment.keda.cooldownPeriod }}
+  minReplicaCount: {{ $shipment.keda.minReplicaCount }}
+  maxReplicaCount: {{ $shipment.keda.maxReplicaCount }}
+  triggers:
+    - type: aws-sqs-queue
+      metadata:
+        queueURL: {{ $shipment.keda.queueURL | quote }}
+        awsRegion: {{ $shipment.keda.awsRegion | quote }}
+        queueLength: {{ $shipment.keda.queueLength | quote }}
+        identityOwner: pod
+{{- if $shipment.keda.triggerAuthentication.enabled }}
+      authenticationRef:
+        name: {{ $shipment.keda.triggerAuthentication.name }}
+{{- end }}
+{{- end }}

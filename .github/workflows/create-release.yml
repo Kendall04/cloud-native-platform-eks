@@ -1,0 +1,186 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag in the format vMAJOR.MINOR.PATCH
+        required: true
+        type: string
+      source_sha:
+        description: Commit SHA that already has sha-<commit> images. Leave blank to use current main HEAD.
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release input
+        id: validate
+        env:
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
+            echo "Run release creation from the main branch." >&2
+            exit 1
+          fi
+
+          if [[ ! "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must match vMAJOR.MINOR.PATCH." >&2
+            exit 1
+          fi
+
+          git fetch --tags origin main
+
+          source_sha="${INPUT_SOURCE_SHA}"
+          if [[ -z "${source_sha}" ]]; then
+            source_sha="$(git rev-parse origin/main)"
+          fi
+
+          git rev-parse --verify "${source_sha}^{commit}" >/dev/null
+
+          if ! git merge-base --is-ancestor "${source_sha}" origin/main; then
+            echo "The requested source SHA is not reachable from main." >&2
+            exit 1
+          fi
+
+          if git rev-parse "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} already exists." >&2
+            exit 1
+          fi
+
+          echo "source_sha=${source_sha}" >> "${GITHUB_OUTPUT}"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+
+      - id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply release tag to existing digests
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          SOURCE_SHA: ${{ steps.validate.outputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          created_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          service_entries_file="$(mktemp)"
+
+          while IFS= read -r service; do
+            id="$(jq -r '.id' <<<"${service}")"
+            name="$(jq -r '.name' <<<"${service}")"
+            repository_name="$(jq -r '.ecrRepository' <<<"${service}")"
+            repository="${REGISTRY}/${repository_name}"
+
+            image_manifest="$(aws ecr batch-get-image \
+              --repository-name "${repository_name}" \
+              --image-ids imageTag="sha-${SOURCE_SHA}" \
+              --query 'images[0].imageManifest' \
+              --output text)"
+
+            if [[ -z "${image_manifest}" || "${image_manifest}" == "None" ]]; then
+              echo "Missing immutable image tag sha-${SOURCE_SHA} for ${repository_name}." >&2
+              exit 1
+            fi
+
+            digest="$(aws ecr describe-images \
+              --repository-name "${repository_name}" \
+              --image-ids imageTag="sha-${SOURCE_SHA}" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text)"
+
+            aws ecr put-image \
+              --repository-name "${repository_name}" \
+              --image-tag "${VERSION}" \
+              --image-manifest "${image_manifest}" >/dev/null
+
+            jq -n \
+              --arg service "${id}" \
+              --arg name "${name}" \
+              --arg repository "${repository}" \
+              --arg versionTag "${VERSION}" \
+              --arg shaTag "sha-${SOURCE_SHA}" \
+              --arg digest "${digest}" \
+              '{
+                service: $service,
+                name: $name,
+                repository: $repository,
+                tags: [$versionTag, $shaTag],
+                digest: $digest,
+                image: ($repository + "@" + $digest)
+              }' >> "${service_entries_file}"
+          done < <(jq -c '.services[]' release/services.json)
+
+          jq -s \
+            --arg version "${VERSION}" \
+            --arg gitTag "${VERSION}" \
+            --arg commitSha "${SOURCE_SHA}" \
+            --arg createdBy "${GITHUB_ACTOR}" \
+            --arg createdAt "${created_at}" \
+            '{
+              version: $version,
+              gitTag: $gitTag,
+              commitSha: $commitSha,
+              createdBy: $createdBy,
+              createdAt: $createdAt,
+              services: .
+            }' "${service_entries_file}" > release-manifest.json
+
+      - name: Create git tag
+        env:
+          SOURCE_SHA: ${{ steps.validate.outputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          git tag -a "${VERSION}" "${SOURCE_SHA}" -m "Release ${VERSION}"
+          git push origin "${VERSION}"
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "${VERSION}" release-manifest.json#release-manifest.json \
+            --draft \
+            --generate-notes \
+            --title "${VERSION}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ inputs.version }}
+          path: release-manifest.json
+
+      - name: Add workflow summary
+        env:
+          SOURCE_SHA: ${{ steps.validate.outputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          {
+            echo "## Release Created"
+            echo ""
+            echo "- Version: \`${VERSION}\`"
+            echo "- Commit SHA: \`${SOURCE_SHA}\`"
+            echo "- Draft release notes: created with GitHub auto-generated notes"
+            echo "- Release manifest: attached as \`release-manifest.json\`"
+            echo ""
+            echo "Next steps:"
+            echo "1. Edit the draft release notes in GitHub."
+            echo "2. Update the target environment values file with the released digests."
+            echo "3. Run the Deploy Platform workflow."
+          } >> "${GITHUB_STEP_SUMMARY}"

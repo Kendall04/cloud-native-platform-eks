@@ -1,0 +1,117 @@
+namespace:
+  create: false
+  name: apps
+
+# Static validation placeholder only. Replace infrastructure values and populate image digests before deployment.
+release:
+  version: ""
+  gitTag: ""
+  commitSha: ""
+
+global:
+  ingress:
+    enabled: true
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internal
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/backend-protocol: HTTP
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+      alb.ingress.kubernetes.io/healthcheck-path: /health
+      alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+      alb.ingress.kubernetes.io/success-codes: "200-399"
+      alb.ingress.kubernetes.io/group.name: cloud-native-platform
+      alb.ingress.kubernetes.io/load-balancer-name: cloud-native-platform-prod
+
+services:
+  auth:
+    serviceAccount:
+      automountServiceAccountToken: false
+    image:
+      repository: "795708473882.dkr.ecr.us-east-1.amazonaws.com/auth-service"
+      tag: "prod-placeholder-static-render-only"
+      digest: ""
+    env:
+      ASPNETCORE_ENVIRONMENT: Production
+      Swagger__Enabled: "false"
+      Database__Schema: auth
+      Jwt__Issuer: logistics-platform
+      Jwt__Audience: logistics-platform-clients
+      Jwt__ExpirationMinutes: "60"
+      Auth__RefreshTokenExpirationDays: "30"
+      BootstrapAdmin__FirstName: Platform
+      BootstrapAdmin__LastName: Admin
+    secretEnv:
+      - name: ConnectionStrings__Postgres
+        secretName: platform-runtime-secrets
+        secretKey: auth-connection-string
+      - name: Jwt__Secret
+        secretName: platform-runtime-secrets
+        secretKey: auth-jwt-secret
+      - name: BootstrapAdmin__Email
+        secretName: platform-runtime-secrets
+        secretKey: auth-bootstrap-admin-email
+      - name: BootstrapAdmin__Password
+        secretName: platform-runtime-secrets
+        secretKey: auth-bootstrap-admin-password
+
+  shipment:
+    image:
+      repository: "795708473882.dkr.ecr.us-east-1.amazonaws.com/shipment-service"
+      tag: "prod-placeholder-static-render-only"
+      digest: ""
+    serviceAccount:
+      automountServiceAccountToken: true
+      annotations:
+        eks.amazonaws.com/role-arn: "REPLACE_WITH_PROD_IRSA_ROLE_ARN"
+    env:
+      ASPNETCORE_ENVIRONMENT: Production
+      Swagger__Enabled: "false"
+      Database__Schema: shipment
+      AWS__Region: us-east-1
+      AWS__EventBusName: cloud-native-platform-prod-bus
+      AWS__ShipmentEventsQueueUrl: "REPLACE_WITH_PROD_QUEUE_URL"
+      ShipmentConsumer__MaxMessagesPerPoll: "5"
+      ShipmentConsumer__WaitTimeSeconds: "20"
+      ShipmentConsumer__FailureBackoffSeconds: "5"
+    secretEnv:
+      - name: ConnectionStrings__Postgres
+        secretName: platform-runtime-secrets
+        secretKey: shipment-connection-string
+      - name: PlatformAuth__TrustedProxySecret
+        secretName: platform-runtime-secrets
+        secretKey: platform-trusted-proxy-secret
+      - name: PlatformAuth__InternalServiceSecret
+        secretName: platform-runtime-secrets
+        secretKey: platform-internal-service-secret
+    keda:
+      enabled: false
+      queueURL: "REPLACE_WITH_PROD_QUEUE_URL"
+      awsRegion: us-east-1
+      queueLength: "5"
+
+  tracking:
+    image:
+      repository: "795708473882.dkr.ecr.us-east-1.amazonaws.com/tracking-service"
+      tag: "prod-placeholder-static-render-only"
+      digest: ""
+    serviceAccount:
+      automountServiceAccountToken: true
+      annotations:
+        eks.amazonaws.com/role-arn: "REPLACE_WITH_PROD_IRSA_ROLE_ARN"
+    env:
+      ASPNETCORE_ENVIRONMENT: Production
+      Swagger__Enabled: "false"
+      Database__Schema: tracking
+      AWS__Region: us-east-1
+      AWS__EventBusName: cloud-native-platform-prod-bus
+      ShipmentService__BaseUrl: "http://shipment-service.apps.svc.cluster.local:8080"
+    secretEnv:
+      - name: ConnectionStrings__Postgres
+        secretName: platform-runtime-secrets
+        secretKey: tracking-connection-string
+      - name: PlatformAuth__TrustedProxySecret
+        secretName: platform-runtime-secrets
+        secretKey: platform-trusted-proxy-secret
+      - name: PlatformAuth__InternalServiceSecret
+        secretName: platform-runtime-secrets
+        secretKey: platform-internal-service-secret

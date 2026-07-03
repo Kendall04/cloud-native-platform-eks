@@ -1,0 +1,105 @@
+name: Validate
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  pull-request-policy:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate branch flow
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          bootstrap_branch="chore/bootstrap-eks-platform-baseline"
+
+          if [[ "${BASE_REF}" == "main" && "${HEAD_REF}" != "dev" && "${HEAD_REF}" != "${bootstrap_branch}" ]]; then
+            echo "Pull requests into main must come from dev." >&2
+            echo "The only exception is the one-time baseline bootstrap branch." >&2
+            exit 1
+          fi
+
+      - name: Validate PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          regex='^(build|chore|ci|docs|feat|fix|perf|refactor|release|revert|style|test)\([^)]+\)(!)?: .+'
+
+          if [[ ! "${TITLE}" =~ ${regex} ]]; then
+            echo "PR titles must follow Conventional Commits and include a scope." >&2
+            echo "Example: feat(auth): add refresh token rotation" >&2
+            exit 1
+          fi
+
+      - name: Validate commit subjects
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          regex='^(build|chore|ci|docs|feat|fix|perf|refactor|release|revert|style|test)\([^)]+\)(!)?: .+'
+
+          while IFS= read -r subject; do
+            [[ -z "${subject}" ]] && continue
+
+            if [[ ! "${subject}" =~ ${regex} ]]; then
+              echo "Commit subject does not follow Conventional Commits with scope: ${subject}" >&2
+              exit 1
+            fi
+          done < <(git log --format=%s "${BASE_SHA}..${HEAD_SHA}")
+
+  dotnet-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        solution:
+          - microservices/auth-service/AuthService.sln
+          - microservices/shipment-service/ShipmentService.sln
+          - microservices/tracking-service/TrackingService.sln
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore "${{ matrix.solution }}"
+
+      - name: Test
+        run: dotnet test "${{ matrix.solution }}" --configuration Release --no-restore
+
+  helm-and-release-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release service metadata
+        run: jq -e '.services | length > 0' release/services.json >/dev/null
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint platform-services chart
+        run: helm lint ./k8s/charts/platform-services -f ./k8s/environments/dev/platform-services.values.yaml
+
+      - name: Render platform-services chart with dev overlay
+        run: |
+          helm template platform-services \
+            ./k8s/charts/platform-services \
+            -f ./k8s/environments/dev/platform-services.values.yaml >/dev/null
