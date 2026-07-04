@@ -60,10 +60,14 @@ inputs = {
   private_subnet_id         = dependency.vpc.outputs.private_subnet_ids[0]
   cluster_name              = dependency.eks.outputs.cluster_name
   cluster_security_group_id = dependency.eks.outputs.cluster_security_group
-  instance_type             = "t3.nano"
-  kubectl_version           = "v1.35.0"
-  helm_version              = "v4.2.2"
-  root_volume_size          = 8
-  artifact_bucket_name      = dependency.s3.outputs.bucket_ids.artifacts
-  artifact_prefix           = "cluster-addons/${local.environment}"
+  internal_alb_http_egress_security_group_ids = [
+    "sg-079c5a1e99c17270a",
+    "sg-0dcd35733de8447ba",
+  ]
+  instance_type        = "t3.nano"
+  kubectl_version      = "v1.35.0"
+  helm_version         = "v4.2.2"
+  root_volume_size     = 8
+  artifact_bucket_name = dependency.s3.outputs.bucket_ids.artifacts
+  artifact_prefix      = "cluster-addons/${local.environment}"
 }
