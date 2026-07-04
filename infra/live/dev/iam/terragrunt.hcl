@@ -53,24 +53,6 @@ dependency "eventbridge" {
 
 inputs = {
   roles = {
-    "${local.project_name}-${local.environment}-ec2-ssm" = {
-      description = "EC2 role with Systems Manager access."
-      assume_role_policy = jsonencode({
-        Version = "2012-10-17"
-        Statement = [
-          {
-            Effect = "Allow"
-            Action = "sts:AssumeRole"
-            Principal = {
-              Service = "ec2.amazonaws.com"
-            }
-          }
-        ]
-      })
-      managed_policy_arns = [
-        "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-      ]
-    }
     "${local.project_name}-${local.environment}-shipment-service-irsa" = {
       description = "IRSA role for shipment-service running on EKS."
       assume_role_policy = jsonencode({
