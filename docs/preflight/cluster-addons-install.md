@@ -258,9 +258,221 @@ Local evidence:
 - `/tmp/cloud-native-platform-cluster-addons-install/tooling-result.json`
 - `/tmp/cloud-native-platform-cluster-addons-install/generated-values.yaml`
 - `/tmp/cloud-native-platform-cluster-addons-install/rendered.yaml`
-- `/tmp/cloud-native-platform-cluster-addons-install/helm-install-result.json`
-- `/tmp/cloud-native-platform-cluster-addons-install/post-failed-install-check-result.json`
-- `/tmp/cloud-native-platform-cluster-addons-install/no-app-workloads-result.json`
+
+## Controlled Cluster Admin Retry
+
+Date: 2026-07-04T00:46:42Z
+
+The failed install was retried with a controlled, temporary EKS access policy elevation on the private management role.
+
+Temporary elevation:
+
+- Principal: `arn:aws:iam::145023118802:role/cloud-native-platform-dev-management-role`
+- From: `AmazonEKSAdminViewPolicy`
+- To: `AmazonEKSClusterAdminPolicy`
+- Scope: cluster
+- Applied only through the `infra/live/dev/management` Terragrunt stack.
+
+The elevation plan changed only:
+
+- `aws_eks_access_policy_association.view`
+
+Plan summary:
+
+- `1 to add, 0 to change, 1 to destroy`
+
+Apply result:
+
+- Succeeded.
+- Final plan after elevation: `No changes`.
+- No management EC2, SG, endpoint, RDS, NAT, API Gateway, Lambda, or workload resources were modified.
+
+AWS confirmed the management role temporarily had:
+
+- `arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy`
+
+## Successful Helm Install
+
+Artifacts used:
+
+- Bucket: `cloud-native-platform-145023118802-dev-us-east-1-artifacts`
+- Prefix: `cluster-addons/dev/20260704T002833Z-e67eaab/`
+- Chart package: `cluster-addons-0.1.0.tgz`
+- Values: `values.yaml`
+
+Install command path from the private management EC2:
+
+```bash
+aws s3 cp s3://cloud-native-platform-145023118802-dev-us-east-1-artifacts/cluster-addons/dev/20260704T002833Z-e67eaab/cluster-addons-0.1.0.tgz /tmp/cluster-addons-install/cluster-addons.tgz
+aws s3 cp s3://cloud-native-platform-145023118802-dev-us-east-1-artifacts/cluster-addons/dev/20260704T002833Z-e67eaab/values.yaml /tmp/cluster-addons-install/values.yaml
+aws eks update-kubeconfig --region us-east-1 --name logistics-platform-dev --kubeconfig /root/.kube/config
+KUBECONFIG=/root/.kube/config helm upgrade --install cluster-addons /tmp/cluster-addons-install/cluster-addons.tgz --namespace kube-system -f /tmp/cluster-addons-install/values.yaml --wait --timeout 10m
+```
+
+Result:
+
+- Release: `cluster-addons`
+- Namespace: `kube-system`
+- Status: `deployed`
+- Revision: `1`
+- Chart: `cluster-addons-0.1.0`
+
+Created cluster-scoped resources include:
+
+- `ingressclassparams.elbv2.k8s.aws`
+- `targetgroupbindings.elbv2.k8s.aws`
+- AWS Load Balancer Controller RBAC and webhooks
+- Cluster Autoscaler RBAC
+
+## AWS Load Balancer Controller Validation
+
+Deployment:
+
+- `aws-load-balancer-controller`
+- Namespace: `kube-system`
+- Ready: `2/2`
+- Image: `public.ecr.aws/eks/aws-load-balancer-controller:v2.14.0`
+- Rollout: successful
+
+Pods:
+
+- `aws-load-balancer-controller-d8b6646d-fhk7d`: `Running`, `1/1`
+- `aws-load-balancer-controller-d8b6646d-grtwz`: `Running`, `1/1`
+
+ServiceAccount:
+
+- `kube-system/aws-load-balancer-controller`
+- IRSA annotation:
+  - `eks.amazonaws.com/role-arn: arn:aws:iam::145023118802:role/logistics-platform-dev-aws-load-balancer-controller-role`
+
+Logs:
+
+- Controller started normally.
+- Webhooks registered.
+- Leader election succeeded.
+- No critical errors observed in the captured tail.
+
+## Cluster Autoscaler Validation
+
+Deployment:
+
+- `cluster-autoscaler`
+- Namespace: `kube-system`
+- Ready: `2/2`
+- Image: `registry.k8s.io/autoscaling/cluster-autoscaler:v1.35.0`
+- Rollout: successful
+
+Pods:
+
+- `cluster-autoscaler-55c68597cc-2lnbz`: `Running`, `1/1`
+- `cluster-autoscaler-55c68597cc-nq8b6`: `Running`, `1/1`
+
+ServiceAccount:
+
+- `kube-system/cluster-autoscaler`
+- IRSA annotation:
+  - `eks.amazonaws.com/role-arn: arn:aws:iam::145023118802:role/logistics-platform-dev-cluster-autoscaler-role`
+
+Logs:
+
+- Kubernetes caches populated.
+- Leader election observed.
+- AWS ASGs discovered.
+- No unschedulable pods.
+- No critical IAM or ASG discovery errors observed in the captured tail.
+
+## Post-Addon Cluster State
+
+Nodes:
+
+- `ip-10-0-142-73.ec2.internal`: `Ready`
+- `ip-10-0-145-254.ec2.internal`: `Ready`
+- `ip-10-0-174-228.ec2.internal`: `Ready`
+
+Deployments:
+
+- `kube-system/aws-load-balancer-controller`: `2/2`
+- `kube-system/cluster-autoscaler`: `2/2`
+- `kube-system/coredns`: `2/2`
+- `kube-system/ebs-csi-controller`: `2/2`
+
+CRDs:
+
+- `ingressclassparams.elbv2.k8s.aws`
+- `targetgroupbindings.elbv2.k8s.aws`
+
+Helm releases:
+
+- `cluster-addons` in `kube-system`: `deployed`
+
+No application namespaces, app pods, or ingress resources were found.
+
+## Permission Reduction
+
+After install and validation, the management role policy association was reduced back to read-only:
+
+- From: `AmazonEKSClusterAdminPolicy`
+- To: `AmazonEKSAdminViewPolicy`
+
+The reduction was applied only through the `infra/live/dev/management` Terragrunt stack.
+
+Reduction plan:
+
+- `1 to add, 0 to change, 1 to destroy`
+
+Reduction apply:
+
+- Succeeded.
+- Final plan after reduction: `No changes`.
+
+AWS confirmed the final associated policy:
+
+- `arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy`
+
+AWS no longer shows `AmazonEKSClusterAdminPolicy` associated with the management role.
+
+Post-reduction read-only validation from the management EC2 succeeded:
+
+- `kubectl get nodes`
+- `kubectl get pods -A`
+- `helm list -A`
+
+## Final Scope Confirmation
+
+No app workloads were deployed.
+
+No API Gateway or Lambda resources matching the project names were found.
+
+No endpoint public access was enabled.
+
+No NAT bastion conversion was performed.
+
+No `kubectl apply`, `kubectl delete`, destroy, or `terragrunt run-all apply` was executed.
+
+## Additional Evidence
+
+Local evidence for the controlled retry:
+
+- `/tmp/cloud-native-platform-cluster-addons-install/pre-admin-check-result.json`
+- `/tmp/cloud-native-platform-cluster-addons-install/management-elevate-init.log`
+- `/tmp/cloud-native-platform-cluster-addons-install/management-elevate-plan.log`
+- `/tmp/cloud-native-platform-cluster-addons-install/management-elevate-apply.log`
+- `/tmp/cloud-native-platform-cluster-addons-install/management-elevate-final-plan.log`
+- `/tmp/cloud-native-platform-cluster-addons-install/helm-install-admin-result.json`
+- `/tmp/cloud-native-platform-cluster-addons-install/lbc-validation-result.json`
+- `/tmp/cloud-native-platform-cluster-addons-install/autoscaler-validation-result.json`
+- `/tmp/cloud-native-platform-cluster-addons-install/post-addons-cluster-state-result.json`
+- `/tmp/cloud-native-platform-cluster-addons-install/management-reduce-plan.log`
+- `/tmp/cloud-native-platform-cluster-addons-install/management-reduce-apply.log`
+- `/tmp/cloud-native-platform-cluster-addons-install/management-reduce-final-plan.log`
+- `/tmp/cloud-native-platform-cluster-addons-install/read-only-after-reduction-result.json`
+- `/tmp/cloud-native-platform-cluster-addons-install/no-app-workloads-after-addons-result.json`
+
+## Recommendation
+
+Proceed to a PR integration phase for the cluster addons install evidence and final read-only permission state.
+
+After integration, the next technical phase should focus on application workload readiness without applying API Gateway integration until an internal ALB exists and is validated.
 
 ## Non-Actions
 
@@ -279,20 +491,24 @@ This phase did not execute:
 - NAT bastion conversion
 - Git push
 
-The only Terraform/Terragrunt apply was for the `management` stack.
+The only Terraform/Terragrunt applies were for the `management` stack:
+
+- one apply to update management tooling/S3 read access in the original install attempt;
+- one apply to temporarily elevate the EKS access policy;
+- one apply to reduce the EKS access policy back to read-only.
 
 ## Recommendation
 
-Do not proceed to application workloads yet.
+Do not proceed directly to public exposure or API Gateway integration yet.
 
 Recommended next phase:
 
-`Fase 2.1b - Controlled cluster-admin path for addons install`
+`Fase 2.2 - PR integration for cluster addons install evidence`
 
 Scope:
 
-- Decide and implement the minimum acceptable temporary cluster write/admin path.
-- Prefer a time-boxed installer access model.
-- Re-run `helm upgrade --install cluster-addons`.
-- Validate AWS Load Balancer Controller and Cluster Autoscaler.
-- Remove or reduce elevated installer access if the chosen model is temporary.
+- Integrate the management tooling changes and cluster addons install evidence to `develop`.
+- Confirm checks are green.
+- Keep management access read-only after the completed install.
+- Prepare application workload readiness only after the evidence is merged.
+- Do not apply API Gateway integration until an internal ALB exists and is validated.
