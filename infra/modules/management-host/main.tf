@@ -1,5 +1,6 @@
 locals {
-  name = var.name
+  name            = var.name
+  artifact_prefix = trim(var.artifact_prefix, "/")
 
   common_tags = merge(var.tags, {
     Name   = local.name
@@ -121,6 +122,43 @@ resource "aws_iam_role_policy" "eks_read_only" {
   })
 }
 
+resource "aws_iam_role_policy" "artifact_read_only" {
+  count = var.artifact_bucket_name == null ? 0 : 1
+
+  name = "${local.name}-artifact-read-only"
+  role = aws_iam_role.management.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ListArtifactPrefix"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = "arn:aws:s3:::${var.artifact_bucket_name}"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = [
+              local.artifact_prefix,
+              "${local.artifact_prefix}/*"
+            ]
+          }
+        }
+      },
+      {
+        Sid    = "ReadArtifactObjects"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = "arn:aws:s3:::${var.artifact_bucket_name}/${local.artifact_prefix}/*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "management" {
   name = "${local.name}-profile"
   role = aws_iam_role.management.name
@@ -175,12 +213,14 @@ resource "aws_instance" "management" {
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     kubectl_version = var.kubectl_version
+    helm_version    = var.helm_version
   })
 
   tags = local.common_tags
 
   depends_on = [
     aws_iam_role_policy_attachment.ssm,
-    aws_iam_role_policy.eks_read_only
+    aws_iam_role_policy.eks_read_only,
+    aws_iam_role_policy.artifact_read_only
   ]
 }

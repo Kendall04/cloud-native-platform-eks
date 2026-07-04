@@ -4,7 +4,7 @@ include "root" {
 }
 
 dependencies {
-  paths = ["../eks", "../vpc"]
+  paths = ["../eks", "../s3", "../vpc"]
 }
 
 locals {
@@ -40,6 +40,19 @@ dependency "eks" {
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan"]
 }
 
+dependency "s3" {
+  config_path = "../s3"
+
+  mock_outputs = {
+    bucket_ids = {
+      artifacts = "cloud-native-platform-dev-us-east-1-artifacts"
+      logs      = "cloud-native-platform-dev-us-east-1-logs"
+    }
+  }
+
+  mock_outputs_allowed_terraform_commands = ["init", "validate", "plan"]
+}
+
 inputs = {
   name                      = "${local.project_name}-${local.environment}-management"
   vpc_id                    = dependency.vpc.outputs.vpc_id
@@ -49,5 +62,8 @@ inputs = {
   cluster_security_group_id = dependency.eks.outputs.cluster_security_group
   instance_type             = "t3.nano"
   kubectl_version           = "v1.35.0"
+  helm_version              = "v4.2.2"
   root_volume_size          = 8
+  artifact_bucket_name      = dependency.s3.outputs.bucket_ids.artifacts
+  artifact_prefix           = "cluster-addons/${local.environment}"
 }
