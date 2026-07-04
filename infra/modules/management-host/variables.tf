@@ -61,8 +61,26 @@ variable "kubectl_version" {
   default     = "v1.35.0"
 }
 
+variable "helm_version" {
+  description = "Helm version installed by user data."
+  type        = string
+  default     = "v4.2.2"
+}
+
 variable "root_volume_size" {
   description = "Root volume size in GiB."
   type        = number
   default     = 8
+}
+
+variable "artifact_bucket_name" {
+  description = "Optional S3 bucket name containing management artifacts."
+  type        = string
+  default     = null
+}
+
+variable "artifact_prefix" {
+  description = "Optional S3 prefix where the management host can read artifacts."
+  type        = string
+  default     = "cluster-addons/dev"
 }
