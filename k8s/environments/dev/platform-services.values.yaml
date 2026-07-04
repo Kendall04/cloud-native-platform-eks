@@ -57,8 +57,8 @@ services:
   shipment:
     image:
       repository: "145023118802.dkr.ecr.us-east-1.amazonaws.com/shipment-service"
-      tag: "1d9604a7ef25"
-      digest: "sha256:fe6e919ac6a5abee433050bde9931bb2b74057f1fa649c291dbc929118bee941"
+      tag: "1b746fcc644f"
+      digest: "sha256:f0e0368985c20a4765bbd20768355f58983408ea1825f4ed2b832d3a1abb8968"
     serviceAccount:
       automountServiceAccountToken: true
       annotations:
@@ -92,8 +92,8 @@ services:
   tracking:
     image:
       repository: "145023118802.dkr.ecr.us-east-1.amazonaws.com/tracking-service"
-      tag: "1d9604a7ef25"
-      digest: "sha256:dda2e02c76f7d247de8ff51a1a6268bcc3eecd93e65d37216655641f30379265"
+      tag: "e482a4e44f98"
+      digest: "sha256:6608af769cc13247b593afaec082629dbdbf86460e9e2e173b499443bae9a6af"
     serviceAccount:
       automountServiceAccountToken: true
       annotations:
