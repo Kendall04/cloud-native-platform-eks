@@ -6,7 +6,7 @@ namespace:
 release:
   version: ""
   gitTag: ""
-  commitSha: ""
+  commitSha: "1d9604a7ef25"
 
 global:
   ingress:
@@ -27,9 +27,9 @@ services:
     serviceAccount:
       automountServiceAccountToken: false
     image:
-      repository: "795708473882.dkr.ecr.us-east-1.amazonaws.com/auth-service"
-      tag: "bootstrap-20260328-011814"
-      digest: ""
+      repository: "145023118802.dkr.ecr.us-east-1.amazonaws.com/auth-service"
+      tag: "1d9604a7ef25"
+      digest: "sha256:d6474872d5dd2db4394c6fd09be590e68600f47783fb75622ef2f66bb8170ab1"
     env:
       ASPNETCORE_ENVIRONMENT: Production
       Swagger__Enabled: "true"
@@ -56,20 +56,20 @@ services:
 
   shipment:
     image:
-      repository: "795708473882.dkr.ecr.us-east-1.amazonaws.com/shipment-service"
-      tag: "bootstrap-20260328-011814"
-      digest: ""
+      repository: "145023118802.dkr.ecr.us-east-1.amazonaws.com/shipment-service"
+      tag: "1d9604a7ef25"
+      digest: "sha256:fe6e919ac6a5abee433050bde9931bb2b74057f1fa649c291dbc929118bee941"
     serviceAccount:
       automountServiceAccountToken: true
       annotations:
-        eks.amazonaws.com/role-arn: "arn:aws:iam::795708473882:role/cloud-native-platform-dev-shipment-service-irsa"
+        eks.amazonaws.com/role-arn: "arn:aws:iam::145023118802:role/cloud-native-platform-dev-shipment-service-irsa"
     env:
       ASPNETCORE_ENVIRONMENT: Production
       Swagger__Enabled: "true"
       Database__Schema: shipment
       AWS__Region: us-east-1
       AWS__EventBusName: cloud-native-platform-dev-bus
-      AWS__ShipmentEventsQueueUrl: "https://sqs.us-east-1.amazonaws.com/795708473882/cloud-native-platform-dev-shipment-events-queue"
+      AWS__ShipmentEventsQueueUrl: "https://sqs.us-east-1.amazonaws.com/145023118802/cloud-native-platform-dev-shipment-events-queue"
       ShipmentConsumer__MaxMessagesPerPoll: "5"
       ShipmentConsumer__WaitTimeSeconds: "20"
       ShipmentConsumer__FailureBackoffSeconds: "5"
@@ -85,19 +85,19 @@ services:
         secretKey: platform-internal-service-secret
     keda:
       enabled: false
-      queueURL: "https://sqs.us-east-1.amazonaws.com/795708473882/cloud-native-platform-dev-shipment-events-queue"
+      queueURL: "https://sqs.us-east-1.amazonaws.com/145023118802/cloud-native-platform-dev-shipment-events-queue"
       awsRegion: us-east-1
       queueLength: "5"
 
   tracking:
     image:
-      repository: "795708473882.dkr.ecr.us-east-1.amazonaws.com/tracking-service"
-      tag: "bootstrap-20260328-011814"
-      digest: ""
+      repository: "145023118802.dkr.ecr.us-east-1.amazonaws.com/tracking-service"
+      tag: "1d9604a7ef25"
+      digest: "sha256:dda2e02c76f7d247de8ff51a1a6268bcc3eecd93e65d37216655641f30379265"
     serviceAccount:
       automountServiceAccountToken: true
       annotations:
-        eks.amazonaws.com/role-arn: "arn:aws:iam::795708473882:role/cloud-native-platform-dev-tracking-service-irsa"
+        eks.amazonaws.com/role-arn: "arn:aws:iam::145023118802:role/cloud-native-platform-dev-tracking-service-irsa"
     env:
       ASPNETCORE_ENVIRONMENT: Production
       Swagger__Enabled: "true"
