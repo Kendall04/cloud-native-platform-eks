@@ -18,6 +18,11 @@ output "vpc_link_id" {
   value       = aws_apigatewayv2_vpc_link.this.id
 }
 
+output "vpc_link_security_group_id" {
+  description = "Security group ID attached to the API Gateway VPC link."
+  value       = aws_security_group.vpc_link.id
+}
+
 output "authorizer_id" {
   description = "ID of the API Gateway request authorizer."
   value       = aws_apigatewayv2_authorizer.jwt.id

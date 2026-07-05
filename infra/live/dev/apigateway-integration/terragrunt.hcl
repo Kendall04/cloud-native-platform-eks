@@ -18,9 +18,10 @@ dependency "apigateway_core" {
   config_path = "../apigateway-core"
 
   mock_outputs = {
-    api_id        = "a1b2c3d4"
-    vpc_link_id   = "vpclink-1234567890"
-    authorizer_id = "authorizer-1234567890"
+    api_id                     = "a1b2c3d4"
+    vpc_link_id                = "vpclink-1234567890"
+    vpc_link_security_group_id = "sg-00000000000000000"
+    authorizer_id              = "authorizer-1234567890"
   }
 
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan"]
@@ -32,19 +33,18 @@ inputs = {
   vpc_link_id       = dependency.apigateway_core.outputs.vpc_link_id
   authorizer_id     = dependency.apigateway_core.outputs.authorizer_id
   alb_listener_port = 80
+  alb_arn           = "arn:aws:elasticloadbalancing:us-east-1:145023118802:loadbalancer/app/cloud-native-platform-dev/feabb93df9e991e0"
+  alb_listener_arn  = "arn:aws:elasticloadbalancing:us-east-1:145023118802:listener/app/cloud-native-platform-dev/feabb93df9e991e0/f91fd1bd16e313b9"
 
   alb_discovery_tags = {
-    "kubernetes.io/namespace"    = "apps"
-    "kubernetes.io/ingress-name" = "platform-services"
+    "ingress.k8s.aws/stack" = "cloud-native-platform"
+    "elbv2.k8s.aws/cluster" = "logistics-platform-dev"
   }
 
   public_route_keys = [
-    "ANY /auth",
-    "ANY /auth/{proxy+}",
-    "GET /shipments/swagger",
-    "GET /shipments/swagger/{proxy+}",
-    "GET /tracking/swagger",
-    "GET /tracking/swagger/{proxy+}"
+    "POST /auth/login",
+    "POST /auth/register",
+    "POST /auth/refresh"
   ]
 
   protected_route_keys = [
@@ -52,13 +52,6 @@ inputs = {
     "GET /auth/validate",
     "ANY /shipments",
     "ANY /shipments/{proxy+}",
-    "ANY /tracking",
-    "ANY /tracking/{proxy+}",
-    "ANY /admin/users",
-    "ANY /admin/users/{proxy+}",
-    "ANY /admin/shipments",
-    "ANY /admin/shipments/{proxy+}",
-    "ANY /admin/tracking-events",
-    "ANY /admin/tracking-events/{proxy+}"
+    "ANY /tracking/{proxy+}"
   ]
 }
