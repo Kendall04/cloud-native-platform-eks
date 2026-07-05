@@ -3,6 +3,11 @@ output "alb_arn" {
   value       = local.alb_arn
 }
 
+output "alb_listener_arn" {
+  description = "ARN of the ALB listener targeted by API Gateway."
+  value       = local.alb_listener_arn
+}
+
 output "public_integration_id" {
   description = "ID of the public API Gateway integration."
   value       = try(aws_apigatewayv2_integration.public[0].id, null)

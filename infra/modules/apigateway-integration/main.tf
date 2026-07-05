@@ -13,8 +13,12 @@ locals {
     "overwrite:header.X-Platform-Roles"        = "$context.authorizer.roles"
     "overwrite:header.X-Platform-Proxy-Secret" = "$context.authorizer.proxySecret"
   }
-  use_tag_lookup = length(var.alb_discovery_tags) > 0
-  alb_arn        = var.enabled ? (local.use_tag_lookup ? data.aws_lb.ingress_by_tags[0].arn : data.aws_lb.ingress_by_name[0].arn) : null
+  use_explicit_listener = var.alb_listener_arn != null
+  use_explicit_alb      = var.alb_arn != null
+  use_tag_lookup        = !local.use_explicit_listener && !local.use_explicit_alb && length(var.alb_discovery_tags) > 0
+  use_name_lookup       = !local.use_explicit_listener && !local.use_explicit_alb && !local.use_tag_lookup
+  alb_arn               = var.enabled ? (local.use_explicit_alb ? var.alb_arn : (local.use_explicit_listener ? null : (local.use_tag_lookup ? data.aws_lb.ingress_by_tags[0].arn : data.aws_lb.ingress_by_name[0].arn))) : null
+  alb_listener_arn      = var.enabled ? (local.use_explicit_listener ? var.alb_listener_arn : data.aws_lb_listener.ingress[0].arn) : null
 }
 
 data "aws_lb" "ingress_by_tags" {
@@ -23,12 +27,12 @@ data "aws_lb" "ingress_by_tags" {
 }
 
 data "aws_lb" "ingress_by_name" {
-  count = var.enabled && !local.use_tag_lookup ? 1 : 0
+  count = var.enabled && local.use_name_lookup ? 1 : 0
   name  = var.alb_name
 }
 
 data "aws_lb_listener" "ingress" {
-  count             = var.enabled ? 1 : 0
+  count             = var.enabled && !local.use_explicit_listener ? 1 : 0
   load_balancer_arn = local.alb_arn
   port              = var.alb_listener_port
 }
@@ -38,7 +42,7 @@ resource "aws_apigatewayv2_integration" "public" {
   api_id                 = var.api_id
   integration_type       = "HTTP_PROXY"
   integration_method     = "ANY"
-  integration_uri        = data.aws_lb_listener.ingress[0].arn
+  integration_uri        = local.alb_listener_arn
   connection_type        = "VPC_LINK"
   connection_id          = var.vpc_link_id
   payload_format_version = "1.0"
@@ -51,7 +55,7 @@ resource "aws_apigatewayv2_integration" "protected" {
   api_id                 = var.api_id
   integration_type       = "HTTP_PROXY"
   integration_method     = "ANY"
-  integration_uri        = data.aws_lb_listener.ingress[0].arn
+  integration_uri        = local.alb_listener_arn
   connection_type        = "VPC_LINK"
   connection_id          = var.vpc_link_id
   payload_format_version = "1.0"

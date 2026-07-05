@@ -92,6 +92,12 @@ variable "vpc_link_subnet_ids" {
   }
 }
 
+variable "vpc_link_egress_security_group_ids" {
+  description = "Security group IDs the API Gateway VPC Link may reach over HTTP."
+  type        = set(string)
+  default     = []
+}
+
 variable "jwt_authorizer_function_name" {
   description = "Lambda function name used by the request authorizer."
   type        = string

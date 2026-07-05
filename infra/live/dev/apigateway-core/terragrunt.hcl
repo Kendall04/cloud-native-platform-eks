@@ -36,11 +36,15 @@ dependency "api_gateway_authorizer" {
 }
 
 inputs = {
-  name                             = "${local.project_name}-${local.environment}-http-api"
-  description                      = "Shared HTTP API for the ${local.project_name} ${local.environment} environment."
-  stage_name                       = "$default"
-  vpc_id                           = dependency.vpc.outputs.vpc_id
-  vpc_link_subnet_ids              = dependency.vpc.outputs.private_subnets
+  name                = "${local.project_name}-${local.environment}-http-api"
+  description         = "Shared HTTP API for the ${local.project_name} ${local.environment} environment."
+  stage_name          = "$default"
+  vpc_id              = dependency.vpc.outputs.vpc_id
+  vpc_link_subnet_ids = dependency.vpc.outputs.private_subnets
+  vpc_link_egress_security_group_ids = [
+    "sg-079c5a1e99c17270a",
+    "sg-0dcd35733de8447ba",
+  ]
   jwt_authorizer_function_name     = dependency.api_gateway_authorizer.outputs.function_name
   jwt_authorizer_lambda_invoke_arn = dependency.api_gateway_authorizer.outputs.function_invoke_arn
 

@@ -14,11 +14,15 @@ resource "aws_security_group" "vpc_link" {
   })
 }
 
-resource "aws_vpc_security_group_egress_rule" "vpc_link_all" {
-  security_group_id = aws_security_group.vpc_link.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1"
-  description       = "Allow API Gateway VPC Link to reach the internal ALB."
+resource "aws_vpc_security_group_egress_rule" "vpc_link_http_to_alb" {
+  for_each = var.vpc_link_egress_security_group_ids
+
+  security_group_id            = aws_security_group.vpc_link.id
+  referenced_security_group_id = each.value
+  ip_protocol                  = "tcp"
+  from_port                    = 80
+  to_port                      = 80
+  description                  = "Allow API Gateway VPC Link HTTP egress to the internal ALB."
 }
 
 resource "aws_cloudwatch_log_group" "this" {
