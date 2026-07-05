@@ -49,6 +49,12 @@ variable "cluster_security_group_id" {
   type        = string
 }
 
+variable "internal_alb_http_egress_security_group_ids" {
+  description = "Internal ALB security group IDs the management host may reach over HTTP for private smoke tests."
+  type        = set(string)
+  default     = []
+}
+
 variable "instance_type" {
   description = "EC2 instance type for the management host."
   type        = string
