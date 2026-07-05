@@ -8,8 +8,9 @@ It is used by API Gateway as a `REQUEST` authorizer for protected routes and val
 
 - `JWT_ISSUER`
 - `JWT_AUDIENCE`
-- `JWT_SECRET`
-- `PLATFORM_TRUSTED_PROXY_SECRET`
+- `AUTH_SERVICE_JWT_SECRET_ID`
+- `PLATFORM_TRUSTED_PROXY_SECRET_ID`
+- `SECRET_CACHE_TTL_SECONDS`
 
 ## Behavior
 
@@ -17,6 +18,8 @@ It is used by API Gateway as a `REQUEST` authorizer for protected routes and val
 - enforces `HS256`, issuer, audience, signature, `nbf`, and `exp`
 - returns simple authorizer context for API Gateway request parameter mapping
 - injects a shared proxy secret into the authorizer context so backend services can trust only API-Gateway-verified identity headers
+- retrieves secret values from AWS Secrets Manager at runtime
+- caches resolved secret values in memory for the configured TTL
 
 ## Deployment
 
@@ -24,4 +27,4 @@ This Lambda is packaged and deployed through Terragrunt:
 
 - `infra/live/dev/api-gateway-authorizer/terragrunt.hcl`
 
-The `JWT_SECRET` and `PLATFORM_TRUSTED_PROXY_SECRET` values are intentionally sourced from deployment-time environment variables rather than committed to the repository.
+The Lambda environment contains only Secrets Manager secret IDs or ARNs, not raw secret values. Secret values are populated outside Terraform and resolved by the Lambda execution role with scoped `secretsmanager:GetSecretValue` permissions.
