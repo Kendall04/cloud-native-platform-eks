@@ -90,3 +90,15 @@ variable "artifact_prefix" {
   type        = string
   default     = "cluster-addons/dev"
 }
+
+variable "enable_apps_namespace_edit_access" {
+  description = "Temporarily associate AmazonEKSEditPolicy scoped to the apps namespace for controlled runtime operations."
+  type        = bool
+  default     = false
+}
+
+variable "temporary_secret_write_arns" {
+  description = "Temporary Secrets Manager ARNs that the management host may update during controlled secret synchronization."
+  type        = set(string)
+  default     = []
+}
