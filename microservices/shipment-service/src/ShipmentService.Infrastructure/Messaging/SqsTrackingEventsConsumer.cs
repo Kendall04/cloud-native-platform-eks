@@ -68,7 +68,7 @@ public sealed class SqsTrackingEventsConsumer(
                 continue;
             }
 
-            foreach (var message in response.Messages)
+            foreach (var message in response.Messages ?? [])
             {
                 try
                 {

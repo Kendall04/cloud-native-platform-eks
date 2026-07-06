@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+
+if ! command -v aws >/dev/null 2>&1; then
+  dnf install -y awscli
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  dnf install -y curl-minimal
+fi
+
+curl -fsSL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/${kubectl_version}/bin/linux/amd64/kubectl"
+chmod 0755 /usr/local/bin/kubectl
+
+helm_archive="/tmp/helm-${helm_version}-linux-amd64.tar.gz"
+curl -fsSL -o "$helm_archive" "https://get.helm.sh/helm-${helm_version}-linux-amd64.tar.gz"
+tar -xzf "$helm_archive" -C /tmp
+install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+rm -rf "$helm_archive" /tmp/linux-amd64
+
+systemctl enable --now amazon-ssm-agent

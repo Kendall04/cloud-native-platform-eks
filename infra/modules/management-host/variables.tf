@@ -1,0 +1,104 @@
+variable "project_name" {
+  description = "Project name used for tags and naming."
+  type        = string
+}
+
+variable "environment" {
+  description = "Environment name used for tags and naming."
+  type        = string
+}
+
+variable "region" {
+  description = "AWS region."
+  type        = string
+}
+
+variable "tags" {
+  description = "Common resource tags."
+  type        = map(string)
+  default     = {}
+}
+
+variable "name" {
+  description = "Name prefix for the management host resources."
+  type        = string
+}
+
+variable "vpc_id" {
+  description = "VPC ID where the management host runs."
+  type        = string
+}
+
+variable "vpc_cidr_block" {
+  description = "VPC CIDR used for DNS egress to the VPC resolver."
+  type        = string
+}
+
+variable "private_subnet_id" {
+  description = "Private subnet ID where the management host runs."
+  type        = string
+}
+
+variable "cluster_name" {
+  description = "EKS cluster name."
+  type        = string
+}
+
+variable "cluster_security_group_id" {
+  description = "EKS cluster security group ID."
+  type        = string
+}
+
+variable "internal_alb_http_egress_security_group_ids" {
+  description = "Internal ALB security group IDs the management host may reach over HTTP for private smoke tests."
+  type        = set(string)
+  default     = []
+}
+
+variable "instance_type" {
+  description = "EC2 instance type for the management host."
+  type        = string
+  default     = "t3.nano"
+}
+
+variable "kubectl_version" {
+  description = "kubectl version installed by user data."
+  type        = string
+  default     = "v1.35.0"
+}
+
+variable "helm_version" {
+  description = "Helm version installed by user data."
+  type        = string
+  default     = "v4.2.2"
+}
+
+variable "root_volume_size" {
+  description = "Root volume size in GiB."
+  type        = number
+  default     = 8
+}
+
+variable "artifact_bucket_name" {
+  description = "Optional S3 bucket name containing management artifacts."
+  type        = string
+  default     = null
+}
+
+variable "artifact_prefix" {
+  description = "Optional S3 prefix where the management host can read artifacts."
+  type        = string
+  default     = "cluster-addons/dev"
+}
+
+variable "enable_apps_namespace_edit_access" {
+  description = "Temporarily associate AmazonEKSEditPolicy scoped to the apps namespace for controlled runtime operations."
+  type        = bool
+  default     = false
+}
+
+variable "temporary_secret_write_arns" {
+  description = "Temporary Secrets Manager ARNs that the management host may update during controlled secret synchronization."
+  type        = set(string)
+  default     = []
+}

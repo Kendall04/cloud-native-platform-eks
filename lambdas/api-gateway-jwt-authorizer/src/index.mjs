@@ -2,12 +2,18 @@ import crypto from "node:crypto";
 
 const issuer = process.env.JWT_ISSUER;
 const audience = process.env.JWT_AUDIENCE;
-const secret = process.env.JWT_SECRET;
-const proxySecret = process.env.PLATFORM_TRUSTED_PROXY_SECRET;
+const jwtSecretId = process.env.AUTH_SERVICE_JWT_SECRET_ID;
+const proxySecretId = process.env.PLATFORM_TRUSTED_PROXY_SECRET_ID;
+const secretCacheTtlMs = Number.parseInt(process.env.SECRET_CACHE_TTL_SECONDS ?? "300", 10) * 1000;
+
+let secretsManagerClient;
+let cachedSecrets;
+let cachedSecretsExpiresAt = 0;
 
 export const handler = async (event) => {
   try {
-    validateConfiguration();
+    const config = validateConfiguration();
+    const secrets = await getAuthorizerSecrets(config);
 
     const authorizationHeader =
       event?.headers?.authorization ??
@@ -28,7 +34,7 @@ export const handler = async (event) => {
       return deny("Bearer token was empty.");
     }
 
-    const payload = validateToken(token);
+    const payload = validateToken(token, config, secrets.jwtSecret);
     const roles = extractRoles(payload);
     const userId = stringClaim(payload, "userId") ?? stringClaim(payload, "sub");
     const email = stringClaim(payload, "email") ?? "";
@@ -43,7 +49,7 @@ export const handler = async (event) => {
         userId,
         email,
         roles: roles.join(","),
-        proxySecret,
+        proxySecret: secrets.proxySecret,
       },
     };
   } catch (error) {
@@ -66,16 +72,109 @@ function validateConfiguration() {
     throw new Error("JWT_AUDIENCE is required.");
   }
 
-  if (!secret || secret.length < 32) {
-    throw new Error("JWT_SECRET must be at least 32 characters long.");
+  if (!jwtSecretId) {
+    throw new Error("AUTH_SERVICE_JWT_SECRET_ID is required.");
   }
 
-  if (!proxySecret || proxySecret.length < 32) {
-    throw new Error("PLATFORM_TRUSTED_PROXY_SECRET must be at least 32 characters long.");
+  if (!proxySecretId) {
+    throw new Error("PLATFORM_TRUSTED_PROXY_SECRET_ID is required.");
   }
+
+  if (!Number.isFinite(secretCacheTtlMs) || secretCacheTtlMs <= 0) {
+    throw new Error("SECRET_CACHE_TTL_SECONDS must be a positive integer.");
+  }
+
+  return {
+    audience,
+    issuer,
+    jwtSecretId,
+    proxySecretId,
+  };
 }
 
-function validateToken(token) {
+async function getAuthorizerSecrets(config) {
+  const now = Date.now();
+
+  if (cachedSecrets && cachedSecretsExpiresAt > now) {
+    return cachedSecrets;
+  }
+
+  const [jwtSecret, proxySecret] = await Promise.all([
+    getSecretString(config.jwtSecretId, "auth JWT secret"),
+    getSecretString(config.proxySecretId, "trusted proxy secret"),
+  ]);
+
+  if (jwtSecret.length < 32) {
+    throw new Error("Resolved auth JWT secret must be at least 32 characters long.");
+  }
+
+  if (proxySecret.length < 32) {
+    throw new Error("Resolved trusted proxy secret must be at least 32 characters long.");
+  }
+
+  cachedSecrets = {
+    jwtSecret,
+    proxySecret,
+  };
+  cachedSecretsExpiresAt = now + secretCacheTtlMs;
+
+  return cachedSecrets;
+}
+
+async function getSecretString(secretId, label) {
+  const { GetSecretValueCommand } = await import("@aws-sdk/client-secrets-manager");
+  const client = await getSecretsManagerClient();
+  const response = await client.send(new GetSecretValueCommand({ SecretId: secretId }));
+
+  if (typeof response.SecretString === "string" && response.SecretString.length > 0) {
+    return extractSecretValue(response.SecretString, label);
+  }
+
+  if (response.SecretBinary) {
+    return extractSecretValue(Buffer.from(response.SecretBinary).toString("utf8"), label);
+  }
+
+  throw new Error(`Secrets Manager returned an empty ${label}.`);
+}
+
+async function getSecretsManagerClient() {
+  if (secretsManagerClient) {
+    return secretsManagerClient;
+  }
+
+  const { SecretsManagerClient } = await import("@aws-sdk/client-secrets-manager");
+  secretsManagerClient = new SecretsManagerClient({});
+  return secretsManagerClient;
+}
+
+function extractSecretValue(rawValue, label) {
+  const trimmedValue = rawValue.trim();
+
+  if (!trimmedValue) {
+    throw new Error(`Secrets Manager returned a blank ${label}.`);
+  }
+
+  if (!trimmedValue.startsWith("{")) {
+    return trimmedValue;
+  }
+
+  const parsedValue = JSON.parse(trimmedValue);
+  const candidate =
+    parsedValue.value ??
+    parsedValue.secret ??
+    parsedValue.jwtSecret ??
+    parsedValue.proxySecret ??
+    parsedValue.AUTH_SERVICE_JWT_SECRET ??
+    parsedValue.PLATFORM_TRUSTED_PROXY_SECRET;
+
+  if (typeof candidate !== "string" || !candidate.trim()) {
+    throw new Error(`Secrets Manager JSON for ${label} did not contain a supported string field.`);
+  }
+
+  return candidate.trim();
+}
+
+function validateToken(token, config, secret) {
   const segments = token.split(".");
 
   if (segments.length !== 3) {
@@ -91,10 +190,7 @@ function validateToken(token) {
   }
 
   const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const expectedSignature = crypto
-    .createHmac("sha256", secret)
-    .update(signingInput)
-    .digest();
+  const expectedSignature = crypto.createHmac("sha256", secret).update(signingInput).digest();
   const actualSignature = base64UrlDecodeToBuffer(encodedSignature);
 
   if (
@@ -118,11 +214,11 @@ function validateToken(token) {
     throw new Error("JWT is not valid yet.");
   }
 
-  if (iss !== issuer) {
+  if (iss !== config.issuer) {
     throw new Error("JWT issuer was invalid.");
   }
 
-  if (!matchesAudience(aud, audience)) {
+  if (!matchesAudience(aud, config.audience)) {
     throw new Error("JWT audience was invalid.");
   }
 
@@ -181,3 +277,12 @@ function base64UrlDecodeToBuffer(value) {
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   return Buffer.from(padded, "base64");
 }
+
+export const __testing = {
+  extractSecretValue,
+  resetCache() {
+    cachedSecrets = undefined;
+    cachedSecretsExpiresAt = 0;
+    secretsManagerClient = undefined;
+  },
+};
