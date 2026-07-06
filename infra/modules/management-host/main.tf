@@ -170,6 +170,28 @@ resource "aws_iam_role_policy" "artifact_read_only" {
   })
 }
 
+resource "aws_iam_role_policy" "temporary_secret_write" {
+  count = length(var.temporary_secret_write_arns) == 0 ? 0 : 1
+
+  name = "${local.name}-temporary-secret-write"
+  role = aws_iam_role.management.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "TemporaryAuthorizerSecretSync"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:PutSecretValue"
+        ]
+        Resource = sort(tolist(var.temporary_secret_write_arns))
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "management" {
   name = "${local.name}-profile"
   role = aws_iam_role.management.name
@@ -196,6 +218,21 @@ resource "aws_eks_access_policy_association" "view" {
 
   access_scope {
     type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.management]
+}
+
+resource "aws_eks_access_policy_association" "apps_edit" {
+  count = var.enable_apps_namespace_edit_access ? 1 : 0
+
+  cluster_name  = var.cluster_name
+  principal_arn = aws_iam_role.management.arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
+
+  access_scope {
+    type       = "namespace"
+    namespaces = ["apps"]
   }
 
   depends_on = [aws_eks_access_entry.management]
