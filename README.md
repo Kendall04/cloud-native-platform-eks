@@ -1,5 +1,5 @@
 # cloud-native-platform-eks
-Production-oriented cloud-native platform on AWS EKS with Terraform, Kubernetes, Helm, and CI/CD.
+Production-like dev cloud-native platform on AWS EKS with Terraform, Kubernetes, Helm, and CI/CD.
 
 ## API Gateway Private Integration
 
@@ -25,3 +25,8 @@ Operational notes and safe smoke procedures are documented in
 [`docs/operations/api-gateway-runbook.md`](docs/operations/api-gateway-runbook.md).
 The current dev posture is validated and documented, with known tradeoffs such
 as VPC CIDR ALB ingress hardening instead of SG-to-SG frontend least privilege.
+
+Portfolio readiness notes:
+
+- [Portfolio readiness audit](docs/preflight/portfolio-readiness-audit.md)
+- [Demo and interview narrative](docs/portfolio/demo-narrative.md)
