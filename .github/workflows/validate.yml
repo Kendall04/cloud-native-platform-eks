@@ -90,7 +90,7 @@ jobs:
       - name: Validate release service metadata
         run: jq -e '.services | length > 0' release/services.json >/dev/null
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
 
       - name: Lint platform-services chart
         run: helm lint ./k8s/charts/platform-services -f ./k8s/environments/dev/platform-services.values.yaml
