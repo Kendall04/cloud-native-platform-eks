@@ -106,7 +106,7 @@ jobs:
               builtAt: $builtAt
             }' > "image-${{ matrix.service.id }}.json"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sha-image-${{ matrix.service.id }}-${{ github.sha }}
           path: image-${{ matrix.service.id }}.json
