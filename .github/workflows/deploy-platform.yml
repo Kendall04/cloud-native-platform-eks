@@ -51,7 +51,7 @@ jobs:
           echo "ref=${ref}" >> "${GITHUB_OUTPUT}"
           echo "values_file=k8s/environments/${TARGET_ENV}/platform-services.values.yaml" >> "${GITHUB_OUTPUT}"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.resolve.outputs.ref }}
 
